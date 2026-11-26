@@ -27,6 +27,14 @@ function simplificarFilme(filme) {
   }
 }
 
+function simplificarProvedores(lista) {
+  if (!lista) return []
+  return lista.map(provedor => ({
+    nome: provedor.provider_name,
+    logo: `https://image.tmdb.org/t/p/w92${provedor.logo_path}`
+  }))
+}
+
 app.get('/', (req, res) => {
   res.json({ app: 'OndePassa', status: 'online' })
 })
@@ -58,6 +66,41 @@ app.get('/filmes', async (req, res) => {
     const filmes = resposta.data.results.map(simplificarFilme)
     res.json(filmes)
   } catch (erro) {
+    console.error(erro)
+    res.status(502).json({ mensagem: 'Não foi possível consultar o catálogo de filmes.' })
+  }
+})
+
+app.get('/filme', async (req, res) => {
+  const id = req.query.id
+  if (!id) {
+    return res.status(400).json({ mensagem: 'Informe o id do filme.' })
+  }
+  try {
+    const resposta = await tmdbClient.get(`/movie/${id}`, {
+      params: {
+        append_to_response: 'watch/providers'
+      }
+    })
+    const filme = resposta.data
+    const provedores = filme['watch/providers']?.results?.BR || {}
+    const detalhes = {
+      ...simplificarFilme(filme),
+      duracao: filme.runtime || null,
+      generos: filme.genres.map(g => g.name),
+      sinopse: filme.overview || null,
+      fundo: filme.backdrop_path ? `https://image.tmdb.org/t/p/w780${filme.backdrop_path}` : null,
+      ondeAssistir: {
+        assinatura: simplificarProvedores(provedores.flatrate),
+        aluguel: simplificarProvedores(provedores.rent),
+        compra: simplificarProvedores(provedores.buy)
+      }
+    }
+    res.json(detalhes)
+  } catch (erro) {
+    if (erro.response && erro.response.status === 404) {
+      return res.status(404).json({ mensagem: 'Filme não encontrado.' })
+    }
     console.error(erro)
     res.status(502).json({ mensagem: 'Não foi possível consultar o catálogo de filmes.' })
   }
